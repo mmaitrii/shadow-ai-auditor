@@ -1,17 +1,11 @@
 import streamlit as st
 import spacy
 import re
-import subprocess
-import sys
 
-# Load the NLP Model for finding Names and Organizations (and auto-download if missing)
+# Load the NLP Model directly
 @st.cache_resource
 def load_model():
-    try:
-        return spacy.load("en_core_web_sm")
-    except OSError:
-        subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
-        return spacy.load("en_core_web_sm")
+    return spacy.load("en_core_web_sm")
 
 nlp = load_model()
 
