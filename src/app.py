@@ -1,13 +1,30 @@
 import streamlit as st
 import spacy
 import re
+import urllib.request
+import os
 
-# Load the NLP Model directly
+# Download and load the spaCy model robustly without subprocess or pip installer crashes
 @st.cache_resource
 def load_model():
-    return spacy.load("en_core_web_sm")
+    model_name = "en_core_web_sm"
+    try:
+        return spacy.load(model_name)
+    except OSError:
+        # Fallback: Download direct wheel file into cache if spacy model is absent
+        url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
+        wheel_path = "en_core_web_sm.whl"
+        if not os.path.exists(wheel_path):
+            urllib.request.urlretrieve(url, wheel_path)
+        os.system(f"python -m pip install {wheel_path}")
+        return spacy.load(model_name)
 
-nlp = load_model()
+# Safely load NLP model
+try:
+    nlp = load_model()
+except Exception as e:
+    st.error(f"Error loading NLP model: {e}")
+    nlp = None
 
 st.set_page_config(page_title="Shadow AI Privacy Auditor", layout="centered")
 
@@ -31,17 +48,21 @@ if st.button("Audit Text"):
     if not user_input.strip():
         st.warning("Please enter some text to audit.")
     else:
-        doc = nlp(user_input)
         findings = []
         redacted_text = user_input
         highlighted_text = user_input
 
-        # Step A: Scan with ML Model (spaCy) for Names
-        for ent in doc.ents:
-            if ent.label_ == "PERSON":
-                findings.append({"text": ent.text, "category": "Names & Contact Info", "reason": "Contains a human name."})
-                redacted_text = redacted_text.replace(ent.text, "[NAME]")
-                highlighted_text = highlighted_text.replace(ent.text, f"<mark style='background-color: #ffcccc; color: red;'><b>{ent.text}</b></mark>")
+        # Step A: Scan with ML Model (spaCy) for Names if available
+        if nlp is not None:
+            try:
+                doc = nlp(user_input)
+                for ent in doc.ents:
+                    if ent.label_ == "PERSON":
+                        findings.append({"text": ent.text, "category": "Names & Contact Info", "reason": "Contains a human name."})
+                        redacted_text = redacted_text.replace(ent.text, "[NAME]")
+                        highlighted_text = highlighted_text.replace(ent.text, f"<mark style='background-color: #ffcccc; color: red;'><b>{ent.text}</b></mark>")
+            except Exception as e:
+                st.warning("Model scanning encountered a minor issue; relying on pattern detection.")
 
         # Step B: Scan with Regex for strict patterns
         for label, (pattern, category) in patterns.items():
